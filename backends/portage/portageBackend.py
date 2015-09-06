@@ -31,6 +31,7 @@ try:
     from itertools import izip
 except ImportError:
     izip = zip
+from functools import wraps
 
 # layman imports (>=2)
 import layman.config
@@ -819,11 +820,24 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
                 info = INFO_AVAILABLE
         self.package(self._cpv_to_id(cpv), info, desc)
 
+    def operation_info(self, status, cancellable=False, progress=False):
+
+        @wraps(func)
+        def wrapper(*args, *kwargs):
+            self.status(status)
+            self.allow_cancel(cancellable)
+            self.progress(None if progress is False else 0)
+
+            ret = func(*args, *kwargs)
+
+            self.progress(None if progress is False else 100)
+
+            return ret
+
+        return wrapper
+
+    @self.operation_info(STATUS_QUERY, True)
     def get_categories(self):
-
-        self.status(STATUS_QUERY)
-        self.allow_cancel(True)
-
         categories = self._get_portage_categories()
         if not categories:
             self.error(ERROR_GROUP_LIST_INVALID, "no package categories")
@@ -842,6 +856,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
             cat_id = name  # same thing
             self.category("", cat_id, name, summary, icon)
 
+    @self.operation_info(STATUS_INFO, True)
     def depends_on(self, filters, pkgs, recursive):
         # TODO: use only myparams ?
         # TODO: improve error management / info
@@ -850,10 +865,6 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
         # - installed: ok
         # - free: ok
         # - newest: ignored because only one version of a package is installed
-
-        self.status(STATUS_INFO)
-        self.allow_cancel(True)
-        self.percentage(None)
 
         cpv_input = []
         cpv_list = []
@@ -938,12 +949,9 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
                 except InvalidAtom:
                     continue
 
+    @self.operation_info(STATUS_INFO, True, True)
     def get_details(self, pkgs):
-        self.status(STATUS_INFO)
-        self.allow_cancel(True)
-
         progress = PackagekitProgress(compute_equal_steps(pkgs))
-        self.percentage(progress.percent)
 
         for percentage, pkg in izip(progress, pkgs):
             cpv = self._id_to_cpv(pkg)
@@ -971,14 +979,9 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
             self.percentage(percentage)
 
-        self.percentage(100)
-
+    @self.operation_info(STATUS_INFO, True, True)
     def get_files(self, pkgs):
-        self.status(STATUS_INFO)
-        self.allow_cancel(True)
-
         progress = PackagekitProgress(compute_equal_steps(pkgs))
-        self.percentage(progress.percent)
 
         for percentage, pkg in izip(progress, pkgs):
             cpv = self._id_to_cpv(pkg)
@@ -998,16 +1001,11 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
             self.percentage(percentage)
 
-        self.percentage(100)
-
+    @self.operation_info(STATUS_QUERY, True, True)
     def get_packages(self, filters):
-        self.status(STATUS_QUERY)
-        self.allow_cancel(True)
-
         cp_list = self._get_all_cp(filters)
 
         progress = PackagekitProgress(compute_equal_steps(cp_list))
-        self.percentage(progress.percent)
 
         for percentage, cp in izip(progress, self._get_all_cp(filters)):
             for cpv in self._get_all_cpv(cp, filters):
@@ -1018,8 +1016,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
             self.percentage(percentage)
 
-        self.percentage(100)
-
+    @self.operation_info(STATUS_INFO, True)
     def get_repo_list(self, filters):
         """ Get list of repository.
 
@@ -1029,10 +1026,6 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
         Adds a dummy entry for gentoo-x86 official tree even though it appears
         in layman's listing nowadays.
         """
-        self.status(STATUS_INFO)
-        self.allow_cancel(True)
-        self.percentage(None)
-
         conf = layman.config.BareConfig()
         conf.set_option('quiet', True)
         installed_layman_db = layman.db.DB(conf)
@@ -1050,6 +1043,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
                         self._is_repo_enabled(installed_layman_db, repo_name)
                     )
 
+    @self.operation_info(STATUS_RUNNING, True)
     def required_by(self, filters, pkgs, recursive):
         # TODO: manage non-installed package
 
@@ -1057,10 +1051,6 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
         # - installed: error atm, see previous TODO
         # - free: ok
         # - newest: ignored because only one version of a package is installed
-
-        self.status(STATUS_RUNNING)
-        self.allow_cancel(True)
-        self.percentage(None)
 
         cpv_input = []
         cpv_list = []
@@ -1102,12 +1092,9 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
                 except InvalidAtom:
                     continue
 
+    @self.operation_info(STATUS_INFO, True)
     def get_update_detail(self, pkgs):
         # TODO: a lot of informations are missing
-
-        self.status(STATUS_INFO)
-        self.allow_cancel(True)
-        self.percentage(None)
 
         for pkg in pkgs:
             updates = []
@@ -1138,6 +1125,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
                 issued, updated
             )
 
+    @self.operation_info(STATUS_INFO, True)
     def get_updates(self, filters):
         # NOTES:
         # because of a lot of things related to Gentoo,
@@ -1155,10 +1143,6 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
         # - installed: try to update non-installed packages and call me ;)
         # - free: ok
         # - newest: ok
-
-        self.status(STATUS_INFO)
-        self.allow_cancel(True)
-        self.percentage(None)
 
         update_candidates = []
         cpv_updates = {}
@@ -1258,6 +1242,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
                 for cpv in cpv_updates[cp][slot]:
                     self._package(cpv, INFO_NORMAL)
 
+    @self.operation_info(STATUS_RUNNING, False)
     def install_packages(self, transaction_flags, pkgs):
 
         only_trusted = self._is_only_trusted(transaction_flags)
@@ -1274,11 +1259,6 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
         # even if it happens to be needed in Gentoo but probably not this API
         # TODO: every merged pkg should emit self.package()
         #       see around _emerge.Scheduler.Scheduler
-
-        self.status(STATUS_RUNNING)
-        self.allow_cancel(False)
-        self.percentage(None)
-
         cpv_list = []
 
         for pkg in pkgs:
@@ -1359,14 +1339,11 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
         self._signal_config_update()
 
+    @self.operation_info(STATUS_REFRESH_CACHE, False)
     def refresh_cache(self, force):
         # NOTES: can't manage progress even if it could be better
         # TODO: do not wait for exception, check timestamp
         # TODO: message if overlay repo has changed (layman)
-        self.status(STATUS_REFRESH_CACHE)
-        self.allow_cancel(False)
-        self.percentage(None)
-
         myopts = {'--quiet': True}
 
         conf = layman.config.BareConfig()
@@ -1390,16 +1367,13 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
         finally:
             self._unblock_output()
 
+    @self.operation_info(STATUS_RUNNING, False)
     def remove_packages(self, transaction_flags, pkgs, allowdep, autoremove):
         return self._remove_packages(transaction_flags, pkgs, allowdep, autoremove)
 
     def _remove_packages(self, transaction_flags, pkgs, allowdep, autoremove):
         # TODO: every to-be-removed pkg should emit self.package()
         #       see around _emerge.Scheduler.Scheduler
-        self.status(STATUS_RUNNING)
-        self.allow_cancel(False)
-        self.percentage(None)
-
         simulate = self._is_simulate(transaction_flags)
 
         cpv_list = []
@@ -1516,11 +1490,9 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
         #     self.message(MESSAGE_UNKNOWN, msg)
         self._elog_messages = []
 
+    @self.operation_info(STATUS_INFO, True)
     def repo_enable(self, repoid, enable):
         # NOTES: use layman API >= 1.2.3
-        self.status(STATUS_INFO)
-        self.allow_cancel(True)
-        self.percentage(None)
 
         # special case: trying to work with gentoo repo
         if repoid == 'gentoo':
@@ -1566,13 +1538,10 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
                            (repoid, str(exc)))
                 return
 
+    @self.operation_info(STATUS_QUERY, True, True)
     def resolve(self, filters, pkgs):
-        self.status(STATUS_QUERY)
-        self.allow_cancel(True)
-
         cp_list = self._get_all_cp(filters)
         progress = PackagekitProgress(compute_equal_steps(cp_list))
-        self.percentage(progress.percent)
 
         reg_expr = []
         for pkg in pkgs:
@@ -1589,18 +1558,14 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
             self.percentage(percentage)
 
-        self.percentage(100)
-
+    @self.operation_info(STATUS_QUERY, True, True)
     def search_details(self, filters, keys):
         # NOTES: very bad performance
-        self.status(STATUS_QUERY)
-        self.allow_cancel(True)
 
         cp_list = self._get_all_cp(filters)
         search_list = self._get_search_list(keys)
 
         progress = PackagekitProgress(compute_equal_steps(cp_list))
-        self.percentage(progress.percent)
 
         for percentage, cp in izip(progress, cp_list):
             # unfortunatelly, everything is related to cpv, not cp
@@ -1639,15 +1604,12 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
             self.percentage(percentage)
 
-        self.percentage(100)
-
+    @self.operation_info(STATUS_QUERY, True, True)
     def search_file(self, filters, values):
         # FILTERS:
         # - ~installed is not accepted (error)
         # - free: ok
         # - newest: as only installed, by himself
-        self.status(STATUS_QUERY)
-        self.allow_cancel(True)
 
         if FILTER_NOT_INSTALLED in filters:
             self.error(ERROR_CANNOT_GET_FILELIST,
@@ -1658,7 +1620,6 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
         is_full_path = True
 
         progress = PackagekitProgress(compute_equal_steps(values))
-        self.percentage(progress.percentage)
 
         for percentage, key in izip(progress, values):
 
@@ -1680,17 +1641,13 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
             self.percentage(percentage)
 
-        self.percentage(100)
-
+    @self.operation_info(STATUS_QUERY, True, True)
     def search_group(self, filters, groups):
         # TODO: filter unknown groups before searching ? (optimization)
-        self.status(STATUS_QUERY)
-        self.allow_cancel(True)
 
         cp_list = self._get_all_cp(filters)
 
         progress = PackagekitProgress(compute_equal_steps(cp_list))
-        self.percentage(progress.percent)
 
         for percentage, cp in izip(progress, cp_list):
             for group in groups:
@@ -1700,14 +1657,11 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
             self.percentage(percentage)
 
-        self.percentage(100)
-
+    @self.operation_info(STATUS_QUERY, True, True)
     def search_name(self, filters, keys_list):
         # searching for all keys in package name
         # also filtering by categories if categery is specified in a key
         # keys contain more than one category name, no results can be found
-        self.status(STATUS_QUERY)
-        self.allow_cancel(True)
 
         categories = []
         for k in keys_list[:]:
@@ -1734,7 +1688,6 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
         cp_list = self._get_all_cp(filters)
 
         progress = PackagekitProgress(compute_equal_steps(cp_list))
-        self.percentage(progress.percent)
 
         for percentage, cp in izip(progress, cp_list):
             if category_filter:
@@ -1756,8 +1709,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
             self.percentage(percentage)
 
-        self.percentage(100)
-
+    @self.operation_info(STATUS_RUNNING, False)
     def update_packages(self, transaction_flags, pkgs):
 
         only_trusted = self._is_only_trusted(transaction_flags)
@@ -1773,10 +1725,6 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
         # TODO: manage config file updates
         # TODO: every updated pkg should emit self.package()
         #       see around _emerge.Scheduler.Scheduler
-
-        self.status(STATUS_RUNNING)
-        self.allow_cancel(False)
-        self.percentage(None)
 
         cpv_list = []
 
