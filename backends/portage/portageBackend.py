@@ -821,23 +821,28 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
                 info = INFO_AVAILABLE
         self.package(self._cpv_to_id(cpv), info, desc)
 
-    def operation_info(self, status, cancellable=False, progress=False):
+    def operation_info(status, cancellable=False, progress=False):
+        def decorator(func):
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                self = args[0]
+                self.status(status)
+                self.allow_cancel(cancellable)
+                self.percentage(None if progress is False else 0)
 
-        @wraps(func)
-        def wrapper(*args, *kwargs):
-            self.status(status)
-            self.allow_cancel(cancellable)
-            self.progress(None if progress is False else 0)
+                try:
+                    ret = func(*args, **kwargs)
+                    return ret
+                except Exception as exc:
+                    print(str(exc))
+                    raise
+                finally:
+                    self.percentage(None if progress is False else 100)
 
-            ret = func(*args, *kwargs)
+            return wrapper
+        return decorator
 
-            self.progress(None if progress is False else 100)
-
-            return ret
-
-        return wrapper
-
-    @self.operation_info(STATUS_QUERY, True)
+    @operation_info(STATUS_QUERY, True)
     def get_categories(self):
         categories = self._get_portage_categories()
         if not categories:
@@ -857,7 +862,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
             cat_id = name  # same thing
             self.category("", cat_id, name, summary, icon)
 
-    @self.operation_info(STATUS_INFO, True)
+    @operation_info(STATUS_INFO, True)
     def depends_on(self, filters, pkgs, recursive):
         # TODO: use only myparams ?
         # TODO: improve error management / info
@@ -950,7 +955,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
                 except InvalidAtom:
                     continue
 
-    @self.operation_info(STATUS_INFO, True, True)
+    @operation_info(STATUS_INFO, True, True)
     def get_details(self, pkgs):
         progress = PackagekitProgress(compute_equal_steps(pkgs))
 
@@ -980,7 +985,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
             self.percentage(percentage)
 
-    @self.operation_info(STATUS_INFO, True, True)
+    @operation_info(STATUS_INFO, True, True)
     def get_files(self, pkgs):
         progress = PackagekitProgress(compute_equal_steps(pkgs))
 
@@ -1002,7 +1007,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
             self.percentage(percentage)
 
-    @self.operation_info(STATUS_QUERY, True, True)
+    @operation_info(STATUS_QUERY, True, True)
     def get_packages(self, filters):
         cp_list = self._get_all_cp(filters)
 
@@ -1017,7 +1022,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
             self.percentage(percentage)
 
-    @self.operation_info(STATUS_INFO, True)
+    @operation_info(STATUS_INFO, True)
     def get_repo_list(self, filters):
         """ Get list of repository.
 
@@ -1044,7 +1049,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
                         self._is_repo_enabled(installed_layman_db, repo_name)
                     )
 
-    @self.operation_info(STATUS_RUNNING, True)
+    @operation_info(STATUS_RUNNING, True)
     def required_by(self, filters, pkgs, recursive):
         # TODO: manage non-installed package
 
@@ -1093,7 +1098,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
                 except InvalidAtom:
                     continue
 
-    @self.operation_info(STATUS_INFO, True)
+    @operation_info(STATUS_INFO, True)
     def get_update_detail(self, pkgs):
         # TODO: a lot of informations are missing
 
@@ -1126,7 +1131,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
                 issued, updated
             )
 
-    @self.operation_info(STATUS_INFO, True)
+    @operation_info(STATUS_INFO, True)
     def get_updates(self, filters):
         # NOTES:
         # because of a lot of things related to Gentoo,
@@ -1243,7 +1248,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
                 for cpv in cpv_updates[cp][slot]:
                     self._package(cpv, INFO_NORMAL)
 
-    @self.operation_info(STATUS_RUNNING, False)
+    @operation_info(STATUS_RUNNING, False)
     def install_packages(self, transaction_flags, pkgs):
 
         only_trusted = self._is_only_trusted(transaction_flags)
@@ -1340,7 +1345,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
         self._signal_config_update()
 
-    @self.operation_info(STATUS_REFRESH_CACHE, False)
+    @operation_info(STATUS_REFRESH_CACHE, False)
     def refresh_cache(self, force):
         # NOTES: can't manage progress even if it could be better
         # TODO: do not wait for exception, check timestamp
@@ -1368,7 +1373,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
         finally:
             self._unblock_output()
 
-    @self.operation_info(STATUS_RUNNING, False)
+    @operation_info(STATUS_RUNNING, False)
     def remove_packages(self, transaction_flags, pkgs, allowdep, autoremove):
         return self._remove_packages(transaction_flags, pkgs, allowdep, autoremove)
 
@@ -1491,7 +1496,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
         #     self.message(MESSAGE_UNKNOWN, msg)
         self._elog_messages = []
 
-    @self.operation_info(STATUS_INFO, True)
+    @operation_info(STATUS_INFO, True)
     def repo_enable(self, repoid, enable):
         # NOTES: use layman API >= 1.2.3
 
@@ -1539,7 +1544,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
                            (repoid, str(exc)))
                 return
 
-    @self.operation_info(STATUS_QUERY, True, True)
+    @operation_info(STATUS_QUERY, True, True)
     def resolve(self, filters, pkgs):
         cp_list = self._get_all_cp(filters)
         progress = PackagekitProgress(compute_equal_steps(cp_list))
@@ -1559,7 +1564,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
             self.percentage(percentage)
 
-    @self.operation_info(STATUS_QUERY, True, True)
+    @operation_info(STATUS_QUERY, True, True)
     def search_details(self, filters, keys):
         # NOTES: very bad performance
 
@@ -1605,7 +1610,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
             self.percentage(percentage)
 
-    @self.operation_info(STATUS_QUERY, True, True)
+    @operation_info(STATUS_QUERY, True, True)
     def search_file(self, filters, values):
         # FILTERS:
         # - ~installed is not accepted (error)
@@ -1642,7 +1647,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
             self.percentage(percentage)
 
-    @self.operation_info(STATUS_QUERY, True, True)
+    @operation_info(STATUS_QUERY, True, True)
     def search_group(self, filters, groups):
         # TODO: filter unknown groups before searching ? (optimization)
 
@@ -1658,7 +1663,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
             self.percentage(percentage)
 
-    @self.operation_info(STATUS_QUERY, True, True)
+    @operation_info(STATUS_QUERY, True, True)
     def search_name(self, filters, keys_list):
         # searching for all keys in package name
         # also filtering by categories if categery is specified in a key
@@ -1710,7 +1715,7 @@ class PackageKitPortageBackend(PackageKitPortageMixin, PackageKitBaseBackend):
 
             self.percentage(percentage)
 
-    @self.operation_info(STATUS_RUNNING, False)
+    @operation_info(STATUS_RUNNING, False)
     def update_packages(self, transaction_flags, pkgs):
 
         only_trusted = self._is_only_trusted(transaction_flags)
