@@ -529,7 +529,8 @@ class PackageKitPortageMixin(object):
             size = self._get_metadata(cpv, ["SIZE"])[0]
             size = int(size) if size else 0
         else:
-            metadata = self._get_metadata(cpv, ["IUSE", "SLOT"], in_dict=True)
+            metadata = self._get_metadata(cpv, ["IUSE", "SLOT", "EAPI"],
+                                          in_dict=True)
 
             package = _emerge.Package.Package(
                 type_name="ebuild",
