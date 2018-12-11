@@ -166,13 +166,6 @@ pk_self_test_CFLAGS =					\
 
 TESTS = pk-self-test
 
-install-data-hook:
-	if test -w $(DESTDIR)$(prefix)/; then \
-		mkdir -p $(DESTDIR)$(localstatedir)/cache/PackageKit/downloads; \
-		mkdir -p $(DESTDIR)$(localstatedir)/cache/PackageKit/metadata; \
-		mkdir -p $(DESTDIR)$(localstatedir)/log; \
-	fi
-
 clean-local:
 	rm -f *~
 
